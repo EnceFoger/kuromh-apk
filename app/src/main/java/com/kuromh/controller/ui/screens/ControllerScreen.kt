@@ -63,7 +63,7 @@ fun ControllerScreen(viewModel: MainViewModel) {
     LaunchedEffect(isRootGranted) {
         if (isRootGranted) viewModel.refreshOtherModules()
     }
-    LaunchedEffect(selectedModuleId) {
+    LaunchedEffect(selectedModuleId, isRootGranted) {
         viewModel.detectGame(selectedModuleId)
         if (selectedModuleId == ModuleManager.MODULE_ID) viewModel.closeExternalControls()
         else viewModel.openExternalControls(selectedModuleId)
