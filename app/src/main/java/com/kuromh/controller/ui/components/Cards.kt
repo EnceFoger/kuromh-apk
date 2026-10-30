@@ -76,11 +76,13 @@ fun SwitchCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = title, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = subtitle,
-                    color = if (highlightSubtitle) Color.White else Color.Gray,
-                    fontSize = 12.sp
-                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        color = if (highlightSubtitle) Color.White else Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
             }
             KuroSwitch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
         }
