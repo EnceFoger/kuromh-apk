@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # diperlukan untuk membuat GitHub Release
 
 jobs:
   build:
@@ -63,3 +63,14 @@ jobs:
         with:
           name: KUROMH-Release-APK
           path: KUROMH-v1.0-Release.apk
+
+      # Buat GitHub Release otomatis (tag unik per build) dan lampirkan APK-nya
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0-build${{ github.run_number }}"
+          gh release create "$TAG" KUROMH-v1.0-Release.apk \
+            --title "KUROMH $TAG" \
+            --notes "Automated build dari commit ${{ github.sha }}" \
+            --target "${{ github.sha }}"
