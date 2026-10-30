@@ -9,11 +9,14 @@ object RootUtil {
     fun execute(command: String): String {
         var process: Process? = null
         return try {
+            // stderr digabung ke stdout agar buffer tidak penuh; stderr shell root
+            // dibuang lewat "exec 2>/dev/null" supaya tidak mencemari output.
             val p = ProcessBuilder("su")
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .redirectErrorStream(true)
                 .start()
             process = p
             p.outputStream.bufferedWriter().use { writer ->
+                writer.write("exec 2>/dev/null\n")
                 writer.write(command)
                 writer.write("\nexit\n")
             }
