@@ -30,7 +30,7 @@ fun AppUpdateDialog(updates: AppUpdateViewModel) {
         title = { Text("KUROMH Update Available") },
         text = {
             Column {
-                Text("New version: v" + release.version)
+                Text("New version: v" + release.version + if (release.prerelease) " • Beta" else " • Stable")
                 if (release.notes.isNotBlank()) {
                     Spacer(Modifier.height(10.dp))
                     Text("What's New")
