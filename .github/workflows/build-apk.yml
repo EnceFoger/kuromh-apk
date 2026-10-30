@@ -30,7 +30,7 @@ jobs:
           gradle-version: '8.2'
 
       - name: Build Release APK
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: gradle assembleRelease --no-daemon --console=plain
 
       # Opsional: isi secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS
       # supaya tanda tangan APK selalu sama (bisa update tanpa uninstall).
