@@ -3,6 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <queries>
+        <package android:name="com.klab.bleach" />
+        <package android:name="com.bandainamcoent.bleach_mh_ww" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@drawable/icon_kuromh"
