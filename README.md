@@ -4,17 +4,21 @@ Controller application for Kuro Mirror High Zygisk Module v0.4.
 ## Features
 * Root detection & integration via `su` (Magisk / KernelSU)
 * Reads and writes `kuro_mirror_high.cfg` dynamically
-* Adjust Unity Speed, Damage Rate, God Mode, and Diagnostic Dump
+* Install the bundled Kuro Mirror High module from inside the app (Controller menu); "Upload Module" appears if the installer fails
+* Module ON/OFF toggle (OFF stops the module immediately, no reboot)
+* The module is removed automatically if this app is uninstalled (watchdog `service.sh` installed with the module)
+* Config controls (Unity Speed, Damage Rate, God Mode, Dump, slider max) are kept in `ConfigControls.kt` and temporarily hidden
 * Minimalist, dark-themed, ad-free UI using Jetpack Compose
 
 ## Project Structure
 ```
 app/src/main
 ├── AndroidManifest.xml
+├── assets/              kuro_mirror_high.zip (module), uninstall_watchdog.sh
 ├── res/values/themes.xml
 └── java/com/kuromh/controller
     ├── MainActivity.kt
-    ├── core/            ModuleConfig, ConfigManager, RootUtil, MainViewModel
+    ├── core/            ModuleConfig, ConfigManager, ModuleManager, RootUtil, MainViewModel
     └── ui/
         ├── MainScreen.kt        (bottom nav + NavHost)
         ├── components/Cards.kt  (komponen UI bersama)
