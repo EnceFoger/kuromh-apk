@@ -51,6 +51,7 @@ object ExternalModControls {
 
     /** List of controls is always declared by the installed module's own manifest. */
     fun load(moduleId: String): LoadResult {
+        if (moduleId == "kuro_companion") return KuroCompanionControls.load()
         if (!moduleIdPattern.matches(moduleId) || moduleId == ModuleManager.MODULE_ID)
             return LoadResult(null, "Invalid external module ID.")
         if (!RootUtil.isRootAvailable()) return LoadResult(null, "Root permission is required.")
@@ -113,6 +114,7 @@ object ExternalModControls {
 
     /** Updates only a declared key inside that module's own existing config file. */
     fun save(moduleId: String, key: String, proposed: String): SaveResult {
+        if (moduleId == "kuro_companion") return KuroCompanionControls.save(key, proposed)
         val panel = load(moduleId).panel ?: return SaveResult(false, "Module controls unavailable.")
         val control = panel.controls.firstOrNull { it.key == key }
             ?: return SaveResult(false, "This control is not declared by the module.")
