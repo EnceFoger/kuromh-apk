@@ -29,6 +29,12 @@ jobs:
         with:
           gradle-version: '8.2'
 
+      # Versi diambil otomatis dari versionName di app/build.gradle.kts
+      - name: Read app version
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
       - name: Build Release APK
         run: gradle assembleRelease --no-daemon --console=plain
 
@@ -54,23 +60,23 @@ jobs:
             --ks release.keystore \
             --ks-key-alias "$KEY_ALIAS" \
             --ks-pass env:KEYSTORE_PASSWORD \
-            --out KUROMH-v1.0-Release.apk \
+            --out "KUROMH-v${VERSION}-Release.apk" \
             app/build/outputs/apk/release/app-release-unsigned.apk
-          "$BUILD_TOOLS_DIR/apksigner" verify KUROMH-v1.0-Release.apk
+          "$BUILD_TOOLS_DIR/apksigner" verify "KUROMH-v${VERSION}-Release.apk"
 
       - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4
         with:
           name: KUROMH-Release-APK
-          path: KUROMH-v1.0-Release.apk
+          path: KUROMH-v${{ env.VERSION }}-Release.apk
 
       # Buat GitHub Release otomatis (tag unik per build) dan lampirkan APK-nya
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.0-build${{ github.run_number }}"
-          gh release create "$TAG" KUROMH-v1.0-Release.apk \
+          TAG="v${VERSION}-build${{ github.run_number }}"
+          gh release create "$TAG" "KUROMH-v${VERSION}-Release.apk" \
             --title "KUROMH $TAG" \
             --notes "Automated build dari commit ${{ github.sha }}" \
             --target "${{ github.sha }}"
