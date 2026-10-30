@@ -37,6 +37,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val NOT_FOUND = "Not Found"
         private const val PREFS_NAME = "kuromh_prefs"
         private const val KEY_ROOT_TOGGLE = "root_toggle_enabled"
+        // Status modul terakhir yang terverifikasi, supaya saat aplikasi dibuka ulang tampilan tidak mulai dari kosong
+        private const val KEY_CACHE_VALID = "cache_valid"
+        private const val KEY_CACHE_INSTALLED = "cache_installed"
+        private const val KEY_CACHE_ENABLED = "cache_enabled"
+        private const val KEY_CACHE_PENDING = "cache_reboot_pending"
+        private const val KEY_CACHE_VERSION = "cache_version"
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -45,23 +51,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRootToggleEnabled = MutableStateFlow(prefs.getBoolean(KEY_ROOT_TOGGLE, false))
     val isRootToggleEnabled: StateFlow<Boolean> = _isRootToggleEnabled.asStateFlow()
 
-    private val _isRootGranted = MutableStateFlow(false)
+    // Dipakai hanya jika root memang sudah diizinkan sebelumnya; akan dikoreksi oleh refreshStatus()
+    private val cacheValid = prefs.getBoolean(KEY_ROOT_TOGGLE, false) && prefs.getBoolean(KEY_CACHE_VALID, false)
+    private val cInstalled = cacheValid && prefs.getBoolean(KEY_CACHE_INSTALLED, false)
+    private val cEnabled = cInstalled && prefs.getBoolean(KEY_CACHE_ENABLED, false)
+    private val cPending = cInstalled && prefs.getBoolean(KEY_CACHE_PENDING, false)
+
+    private val _isRootGranted = MutableStateFlow(cacheValid)
     val isRootGranted: StateFlow<Boolean> = _isRootGranted.asStateFlow()
 
     /** Modul terpasang, sudah aktif (bukan menunggu reboot) dan tidak di-OFF. */
-    private val _isModuleActive = MutableStateFlow(false)
+    private val _isModuleActive = MutableStateFlow(cInstalled && cEnabled && !cPending)
     val isModuleActive: StateFlow<Boolean> = _isModuleActive.asStateFlow()
 
-    private val _moduleInstalled = MutableStateFlow(false)
+    private val _moduleInstalled = MutableStateFlow(cInstalled)
     val moduleInstalled: StateFlow<Boolean> = _moduleInstalled.asStateFlow()
 
-    private val _moduleEnabled = MutableStateFlow(false)
+    private val _moduleEnabled = MutableStateFlow(cEnabled)
     val moduleEnabled: StateFlow<Boolean> = _moduleEnabled.asStateFlow()
 
-    private val _moduleRebootPending = MutableStateFlow(false)
+    private val _moduleRebootPending = MutableStateFlow(cPending)
     val moduleRebootPending: StateFlow<Boolean> = _moduleRebootPending.asStateFlow()
 
-    private val _moduleVersion = MutableStateFlow(NOT_DETECTED)
+    private val _moduleVersion = MutableStateFlow(
+        if (cInstalled) prefs.getString(KEY_CACHE_VERSION, NOT_DETECTED) ?: NOT_DETECTED else NOT_DETECTED
+    )
     val moduleVersion: StateFlow<String> = _moduleVersion.asStateFlow()
 
     private val _config = MutableStateFlow(ModuleConfig())
@@ -113,6 +127,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 resetState()
                 return@launch
             }
+            prefs.edit()
+                .putBoolean(KEY_CACHE_VALID, true)
+                .putBoolean(KEY_CACHE_INSTALLED, snapshot.installed)
+                .putBoolean(KEY_CACHE_ENABLED, snapshot.enabled)
+                .putBoolean(KEY_CACHE_PENDING, snapshot.rebootPending)
+                .putString(KEY_CACHE_VERSION, snapshot.version)
+                .apply()
             _isRootGranted.value = true
             _moduleInstalled.value = snapshot.installed
             _moduleEnabled.value = snapshot.enabled
@@ -227,6 +248,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun resetState() {
+        prefs.edit().putBoolean(KEY_CACHE_VALID, false).apply()
         _isRootGranted.value = false
         _isModuleActive.value = false
         _moduleInstalled.value = false
