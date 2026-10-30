@@ -28,13 +28,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kuromh.controller.core.AppUpdateViewModel
 import com.kuromh.controller.core.MainViewModel
 import com.kuromh.controller.ui.components.InfoButton
 import com.kuromh.controller.ui.components.InfoCard
 import com.kuromh.controller.ui.components.SwitchCard
 
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(viewModel: MainViewModel, updates: AppUpdateViewModel) {
+    val updateState by updates.state.collectAsState()
     var selectedExternalId by remember { mutableStateOf<String?>(null) }
     val otherModules by viewModel.otherModules.collectAsState()
     val otherResult by viewModel.otherModuleResult.collectAsState()
@@ -65,6 +67,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Spacer(modifier = Modifier.height(20.dp))
 
         InfoCard("App Information", "KUROMH Controller v$appVersion")
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { updates.checkNow() },
+            enabled = !updateState.checking && !updateState.downloading,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (updateState.checking) "Checking updates..." else "Check for Updates") }
+        if (updateState.manualStatus.isNotBlank()) {
+            Text(updateState.manualStatus, color = Color.Gray, fontSize = 12.sp)
+        }
         Spacer(modifier = Modifier.height(8.dp))
 
         SwitchCard(
