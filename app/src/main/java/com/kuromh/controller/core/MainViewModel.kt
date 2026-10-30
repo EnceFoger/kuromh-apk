@@ -87,6 +87,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _saveStatus = MutableStateFlow(SaveStatus.IDLE)
     val saveStatus: StateFlow<SaveStatus> = _saveStatus.asStateFlow()
 
+    private val _configWriteMessage = MutableStateFlow("")
+    val configWriteMessage: StateFlow<String> = _configWriteMessage.asStateFlow()
+
+    private val _configSaving = MutableStateFlow(false)
+    val configSaving: StateFlow<Boolean> = _configSaving.asStateFlow()
+
     private val _installState = MutableStateFlow(InstallState())
     val installState: StateFlow<InstallState> = _installState.asStateFlow()
 
@@ -334,22 +340,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateConfig(newConfig: ModuleConfig) {
-        if (!_isRootGranted.value) return
+        if (!_isRootGranted.value || _configSaving.value) return
+        _configSaving.value = true
+        _saveStatus.value = SaveStatus.IDLE
+        _configWriteMessage.value = ""
         viewModelScope.launch {
-            val (success, path) = withContext(Dispatchers.IO) {
-                val ok = ConfigManager.writeConfig(newConfig)
-                ok to (ConfigManager.getActiveConfigPath() ?: NOT_FOUND)
+            val result = withContext(Dispatchers.IO) {
+                ConfigManager.writeConfigDetailed(newConfig)
             }
-            if (success) {
+            _configSaving.value = false
+            _configWriteMessage.value = result.message
+            if (result.ok) {
                 _config.value = newConfig
-                _configPath.value = path
+                _configPath.value = result.path ?: ConfigManager.getActiveConfigPath() ?: NOT_FOUND
             }
-            _saveStatus.value = if (success) SaveStatus.SUCCESS else SaveStatus.FAILED
+            _saveStatus.value = if (result.ok) SaveStatus.SUCCESS else SaveStatus.FAILED
         }
     }
 
     fun clearSaveStatus() {
         _saveStatus.value = SaveStatus.IDLE
+        _configWriteMessage.value = ""
     }
 
     // ---------------------------------------------------------------- modul
@@ -464,6 +475,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _configPath.value = NOT_FOUND
         _config.value = ModuleConfig()
         _saveStatus.value = SaveStatus.IDLE
+        _configWriteMessage.value = ""
+        _configSaving.value = false
         _toggleFailed.value = false
     }
 }
