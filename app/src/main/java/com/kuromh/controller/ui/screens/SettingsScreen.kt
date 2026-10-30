@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Arrangement
@@ -28,10 +29,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kuromh.controller.core.AppUpdateManager
 import com.kuromh.controller.core.AppUpdateViewModel
 import com.kuromh.controller.core.MainViewModel
 import com.kuromh.controller.ui.components.InfoButton
 import com.kuromh.controller.ui.components.InfoCard
+import com.kuromh.controller.ui.components.KuroCard
 import com.kuromh.controller.ui.components.SwitchCard
 
 @Composable
@@ -67,6 +70,48 @@ fun SettingsScreen(viewModel: MainViewModel, updates: AppUpdateViewModel) {
         Spacer(modifier = Modifier.height(20.dp))
 
         InfoCard("App Information", "KUROMH Controller v$appVersion")
+        Spacer(modifier = Modifier.height(12.dp))
+        KuroCard {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Update Channel",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    InfoButton(
+                        "Update Channel",
+                        "Stable receives official GitHub releases only. Beta receives both stable and pre-release builds. Switching channels checks for updates immediately. Android still asks before installing."
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val stable = updateState.channel == AppUpdateManager.Channel.STABLE
+                    Button(
+                        onClick = { updates.setChannel(AppUpdateManager.Channel.STABLE) },
+                        enabled = !updateState.downloading,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (stable) Color.White else Color.DarkGray,
+                            contentColor = if (stable) Color.Black else Color.White
+                        )
+                    ) { Text("Stable") }
+                    Button(
+                        onClick = { updates.setChannel(AppUpdateManager.Channel.BETA) },
+                        enabled = !updateState.downloading,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!stable) Color.White else Color.DarkGray,
+                            contentColor = if (!stable) Color.Black else Color.White
+                        )
+                    ) { Text("Beta") }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
             onClick = { updates.checkNow() },
