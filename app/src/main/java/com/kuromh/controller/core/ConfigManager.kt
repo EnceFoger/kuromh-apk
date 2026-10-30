@@ -1,84 +1,84 @@
 package com.kuromh.controller.core
 
-data class ModuleConfig(
-    var unitySpeed: Float = 1.0f,
-    var damageRate: Float = 1.0f,
-    var godMode: Int = 0,
-    var dump: Int = 0,
-    var maxDamageRate: Float = 10.0f,
-    var maxUnitySpeed: Float = 5.0f
-)
+import java.util.Locale
 
 object ConfigManager {
     private const val MODULE_DIR = "/data/adb/modules/kuro_mirror_high"
-    
-    // Memeriksa berbagai kemungkinan lokasi file konfigurasi
-    val possiblePaths = listOf(
-        "$MODULE_DIR/kuro_mirror_high.cfg",
-        "/data/local/tmp/kuro_mirror_high.cfg",
-        "/storage/emulated/0/Android/data/com.bandainamcoent.bleach_mh_ww/files/kuro_mirror_high.cfg"
+    private const val CONFIG_NAME = "kuro_mirror_high.cfg"
+    private const val FALLBACK_PATH = "/data/local/tmp/$CONFIG_NAME"
+
+    // Lokasi file konfigurasi yang mungkin, urut prioritas
+    private val possiblePaths = listOf(
+        "$MODULE_DIR/$CONFIG_NAME",
+        FALLBACK_PATH,
+        "/storage/emulated/0/Android/data/com.bandainamcoent.bleach_mh_ww/files/$CONFIG_NAME"
     )
 
+    /** Path config pertama yang ada, atau null. Satu kali panggilan su. */
     fun getActiveConfigPath(): String? {
-        if (!RootUtil.isRootAvailable()) return null
-        for (path in possiblePaths) {
-            val check = RootUtil.execute("if [ -f $path ]; then echo 'exists'; fi")
-            if (check == "exists") return path
-        }
-        return null
+        val list = possiblePaths.joinToString(" ") { "'$it'" }
+        val result = RootUtil.execute(
+            "for p in $list; do if [ -f \"\$p\" ]; then echo \"\$p\"; break; fi; done"
+        )
+        return result.ifEmpty { null }
     }
 
-    fun isModuleInstalled(): Boolean {
-        val check = RootUtil.execute("if [ -d $MODULE_DIR ]; then echo 'yes'; fi")
-        return check == "yes"
-    }
+    fun isModuleInstalled(): Boolean =
+        RootUtil.execute("[ -d '$MODULE_DIR' ] && echo yes") == "yes"
 
     fun getModuleProp(key: String): String {
-        val output = RootUtil.execute("grep '^$key=' $MODULE_DIR/module.prop | cut -d'=' -f2")
+        val output = RootUtil.execute(
+            "grep '^$key=' '$MODULE_DIR/module.prop' | head -n 1 | cut -d= -f2-"
+        )
         return output.ifEmpty { "Unknown" }
     }
 
-    fun readConfig(): ModuleConfig {
-        val path = getActiveConfigPath() ?: return ModuleConfig()
-        val content = RootUtil.execute("cat $path")
-        val config = ModuleConfig()
-
-        content.lines().forEach { line ->
-            val parts = line.split("=")
-            if (parts.size == 2) {
-                val key = parts[0].trim()
-                val value = parts[1].trim()
-                when (key) {
-                    "unity_speed" -> config.unitySpeed = value.toFloatOrNull() ?: 1.0f
-                    "damage_rate" -> config.damageRate = value.toFloatOrNull() ?: 1.0f
-                    "god_mode" -> config.godMode = value.toIntOrNull() ?: 0
-                    "dump" -> config.dump = value.toIntOrNull() ?: 0
-                    "max_damage_rate" -> config.maxDamageRate = value.toFloatOrNull() ?: 10.0f
-                    "max_unity_speed" -> config.maxUnitySpeed = value.toFloatOrNull() ?: 5.0f
-                }
+    fun readConfig(path: String): ModuleConfig {
+        val values = RootUtil.execute("cat '$path'")
+            .lineSequence()
+            .mapNotNull { line ->
+                val idx = line.indexOf('=')
+                if (idx <= 0) null else line.substring(0, idx).trim() to line.substring(idx + 1).trim()
             }
-        }
-        return config
+            .toMap()
+
+        val d = ModuleConfig()
+        return ModuleConfig(
+            unitySpeed = values["unity_speed"].toFloatLenient() ?: d.unitySpeed,
+            damageRate = values["damage_rate"].toFloatLenient() ?: d.damageRate,
+            godMode = values["god_mode"]?.toIntOrNull()?.let { it != 0 } ?: d.godMode,
+            dump = values["dump"]?.toIntOrNull()?.let { it != 0 } ?: d.dump,
+            maxDamageRate = values["max_damage_rate"].toFloatLenient() ?: d.maxDamageRate,
+            maxUnitySpeed = values["max_unity_speed"].toFloatLenient() ?: d.maxUnitySpeed
+        )
     }
 
+    /** Tulis config lalu verifikasi isi file. Return true hanya jika isinya benar-benar tertulis. */
     fun writeConfig(config: ModuleConfig): Boolean {
-        val path = getActiveConfigPath() ?: "$MODULE_DIR/kuro_mirror_high.cfg" // Default path if none exists
-        
-        val content = """
-            unity_speed=${String.format("%.1f", config.unitySpeed)}
-            damage_rate=${String.format("%.1f", config.damageRate)}
-            god_mode=${config.godMode}
-            dump=${config.dump}
-            max_damage_rate=${String.format("%.1f", config.maxDamageRate)}
-            max_unity_speed=${String.format("%.1f", config.maxUnitySpeed)}
-        """.trimIndent()
+        val path = getActiveConfigPath() ?: defaultWritePath()
+        val content = buildContent(config)
 
-        return try {
-            RootUtil.execute("echo '$content' > $path")
-            RootUtil.execute("chmod 644 $path")
-            true
-        } catch (e: Exception) {
-            false
-        }
+        RootUtil.execute(
+            "cat > '$path' <<'KUROMH_EOF'\n$content\nKUROMH_EOF\nchmod 644 '$path'"
+        )
+        return RootUtil.execute("cat '$path'").trim() == content
     }
+
+    private fun defaultWritePath(): String =
+        if (isModuleInstalled()) "$MODULE_DIR/$CONFIG_NAME" else FALLBACK_PATH
+
+    // Locale.US wajib: di locale Indonesia "%.1f" menghasilkan "1,0" dan merusak file config.
+    private fun buildContent(config: ModuleConfig): String {
+        fun f(v: Float) = String.format(Locale.US, "%.1f", v)
+        return listOf(
+            "unity_speed=${f(config.unitySpeed)}",
+            "damage_rate=${f(config.damageRate)}",
+            "god_mode=${if (config.godMode) 1 else 0}",
+            "dump=${if (config.dump) 1 else 0}",
+            "max_damage_rate=${f(config.maxDamageRate)}",
+            "max_unity_speed=${f(config.maxUnitySpeed)}"
+        ).joinToString("\n")
+    }
+
+    private fun String?.toFloatLenient(): Float? = this?.replace(',', '.')?.toFloatOrNull()
 }
