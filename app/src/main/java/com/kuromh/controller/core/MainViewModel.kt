@@ -93,6 +93,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _toggleFailed = MutableStateFlow(false)
     val toggleFailed: StateFlow<Boolean> = _toggleFailed.asStateFlow()
 
+    private val _otherModules = MutableStateFlow<List<OtherModuleManager.Module>>(emptyList())
+    val otherModules: StateFlow<List<OtherModuleManager.Module>> = _otherModules.asStateFlow()
+
+    private val _otherModuleResult = MutableStateFlow("")
+    val otherModuleResult: StateFlow<String> = _otherModuleResult.asStateFlow()
+
+    private val _otherModuleBusy = MutableStateFlow(false)
+    val otherModuleBusy: StateFlow<Boolean> = _otherModuleBusy.asStateFlow()
+
+    fun refreshOtherModules() {
+        if (!_isRootGranted.value) {
+            _otherModules.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            _otherModules.value = withContext(Dispatchers.IO) { OtherModuleManager.list() }
+        }
+    }
+
+    fun installOtherModule(uri: Uri) {
+        if (!_isRootGranted.value || _otherModuleBusy.value) return
+        _otherModuleBusy.value = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val app = getApplication<Application>()
+                val target = File(app.cacheDir, "other_module_upload.zip")
+                try {
+                    val source = app.contentResolver.openInputStream(uri)
+                        ?: return@withContext OtherModuleManager.Result(false, "Cannot open ZIP.")
+                    source.use { input -> target.outputStream().use { input.copyTo(it) } }
+                    OtherModuleManager.install(target)
+                } catch (e: Exception) {
+                    OtherModuleManager.Result(false, "Could not install module: ${e.message}")
+                } finally {
+                    target.delete()
+                }
+            }
+            _otherModuleResult.value = result.message
+            _otherModuleBusy.value = false
+            refreshOtherModules()
+        }
+    }
+
+    fun toggleOtherModule(id: String, enabled: Boolean) {
+        if (!_isRootGranted.value || _otherModuleBusy.value) return
+        _otherModuleBusy.value = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { OtherModuleManager.setEnabled(id, enabled) }
+            _otherModuleResult.value = result.message
+            _otherModuleBusy.value = false
+            refreshOtherModules()
+        }
+    }
+
+    fun removeOtherModule(id: String) {
+        if (!_isRootGranted.value || _otherModuleBusy.value) return
+        _otherModuleBusy.value = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { OtherModuleManager.uninstall(id) }
+            _otherModuleResult.value = result.message
+            _otherModuleBusy.value = false
+            refreshOtherModules()
+        }
+    }
+
     private var refreshJob: Job? = null
 
     init {
@@ -135,6 +200,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .putString(KEY_CACHE_VERSION, snapshot.version)
                 .apply()
             _isRootGranted.value = true
+            refreshOtherModules()
             _moduleInstalled.value = snapshot.installed
             _moduleEnabled.value = snapshot.enabled
             _moduleRebootPending.value = snapshot.rebootPending
@@ -254,6 +320,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun resetState() {
         prefs.edit().putBoolean(KEY_CACHE_VALID, false).apply()
         _isRootGranted.value = false
+        _otherModules.value = emptyList()
         _isModuleActive.value = false
         _moduleInstalled.value = false
         _moduleEnabled.value = false
