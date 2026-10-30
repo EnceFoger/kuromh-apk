@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kuromh.controller.core.MainViewModel
+import com.kuromh.controller.ui.components.InfoButton
 import com.kuromh.controller.ui.components.InfoCard
 import com.kuromh.controller.ui.components.SwitchCard
 
@@ -38,6 +39,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val otherModules by viewModel.otherModules.collectAsState()
     val otherResult by viewModel.otherModuleResult.collectAsState()
     val otherBusy by viewModel.otherModuleBusy.collectAsState()
+    val otherTogglePending by viewModel.otherTogglePending.collectAsState()
     val zipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.installOtherModule(uri)
     }
@@ -78,7 +80,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
         InfoCard("About KUROMH", "Designed for Kuro Mirror High Zygisk Module.")
 
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Other Modules", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Other Modules", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                color = Color.White, modifier = Modifier.weight(1f))
+            InfoButton("Other Modules", "Select a module in Controller to view its own features. A reboot may be needed.")
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -91,7 +97,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
             ) { Text("Refresh") }
         }
         if (otherResult.isNotEmpty()) {
-            Text(otherResult, color = Color.LightGray, fontSize = 12.sp)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Module status", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                InfoButton("Module status", otherResult)
+            }
         }
         if (!isRootGranted) {
             Text("Enable Root System first.", color = Color.Gray)
@@ -102,9 +111,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
             SwitchCard(
                 title = module.name,
-                subtitle = "${module.id} • ${module.version}",
+                subtitle = if (module.id in otherTogglePending) "Saving..." else module.version,
                 checked = module.enabled,
-                enabled = !otherBusy,
+                enabled = isRootGranted && !otherBusy && module.id !in otherTogglePending,
                 onCheckedChange = { viewModel.toggleOtherModule(module.id, it) }
             )
             OutlinedButton(
@@ -129,7 +138,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 onClick = { viewModel.removeOtherModule(module.id) },
                 enabled = !otherBusy,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Remove ${module.name} (reboot required)") }
+            ) { Text("Remove Module") }
         }
     }
 }
