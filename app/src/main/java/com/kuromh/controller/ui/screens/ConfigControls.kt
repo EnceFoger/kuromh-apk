@@ -1,5 +1,5 @@
-// Kontrol config lama (slider Unity Speed/Damage Rate, God Mode, Dump, batas max). Sementara tidak dipakai di UI;
-// panggil ModuleConfigControls(viewModel) dari ControllerScreen untuk menampilkannya lagi.
+// Kontrol config (slider Unity Speed/Damage Rate + ikon gerigi batas max, God Mode, Dump, Apply/Reset).
+// Ditampilkan oleh ControllerScreen saat modul sudah terpasang.
 package com.kuromh.controller.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
@@ -86,21 +86,9 @@ fun ModuleConfigControls(viewModel: MainViewModel) {
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        Text("Controller", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        if (!isRootGranted) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Enable Root System in Home first to edit the module config.",
-                color = Color.Gray,
-                fontSize = 14.sp
-            )
-        } else if (configPath == MainViewModel.NOT_FOUND) {
+    // Dipakai di dalam ControllerScreen (yang sudah punya scroll & judul), jadi tidak scroll sendiri
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (isRootGranted && configPath == MainViewModel.NOT_FOUND) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Config not found. Launch the game once with the module active so it creates kuro_mirror_high.cfg, then press Refresh in Home.",
