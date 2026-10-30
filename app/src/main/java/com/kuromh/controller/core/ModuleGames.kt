@@ -19,17 +19,19 @@ object ModuleGames {
     )
 
     /** Always call on an IO/background thread when root is enabled. */
-    fun detect(context: Context, moduleId: String): Game {
+    fun detect(context: Context, moduleId: String, allowRoot: Boolean): Game {
         val target = when {
             moduleId == ModuleManager.MODULE_ID -> {
-                val pkg = RootUtil.execute(
+                val pkg = if (allowRoot) RootUtil.execute(
                     "grep -v '^#' '/data/adb/modules/kuro_mirror_high/package.txt' | head -n 1"
                 ).trim().takeIf { packagePattern.matches(it) }
-                    ?: "com.bandainamcoent.bleach_mh_ww"
-                pkg to "Kuro Mirror High game"
+                    else null
+                val targetPackage = pkg ?: "com.bandainamcoent.bleach_mh_ww"
+                targetPackage to "Kuro Mirror High game"
             }
             known.containsKey(moduleId) -> known.getValue(moduleId)
             else -> {
+                if (!allowRoot) return Game()
                 if (!Regex("[A-Za-z][A-Za-z0-9._-]{0,127}").matches(moduleId)) return Game()
                 val pkg = RootUtil.execute(
                     "if [ -f '/data/adb/modules/$moduleId/package.txt' ]; then " +
