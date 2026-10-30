@@ -16,30 +16,34 @@ import java.security.MessageDigest
 /** Public GitHub Releases only. Never installs arbitrary URLs or silent packages. */
 object AppUpdateManager {
     private const val OWNER_REPO = "EnceFoger/kuromh-apk"
-    private const val RELEASE_API = "https://api.github.com/repos/$OWNER_REPO/releases/latest"
+    private const val RELEASES_API = "https://api.github.com/repos/$OWNER_REPO/releases?per_page=30"
     private const val MAX_APK_SIZE = 100L * 1024 * 1024
-    private val versionPattern = Regex("""^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:$|[-+])""")
+    private val versionPattern = Regex("""^v?(\d+)\.(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:$|[-+])""")
+
+    /** Beta receives stable releases plus GitHub releases flagged prerelease. */
+    enum class Channel { STABLE, BETA }
 
     data class Release(
         val version: String,
         val notes: String,
         val downloadUrl: String,
         val expectedSize: Long,
-        val sha256: String?
+        val sha256: String?,
+        val prerelease: Boolean = false
     )
 
-    private fun versionParts(text: String): List<Int>? {
-        val m = versionPattern.find(text) ?: return null
-        return (1..4).map { n -> m.groupValues[n].toIntOrNull() ?: 0 }
+    private fun versionParts(value: String): List<Int>? {
+        val match = versionPattern.find(value) ?: return null
+        return (1..4).map { n -> match.groupValues[n].toIntOrNull() ?: 0 }
     }
 
-    private fun newer(candidate: String, installed: String): Boolean {
-        val a = versionParts(candidate) ?: return false
-        val b = versionParts(installed) ?: return false
-        for (i in a.indices) {
-            if (a[i] != b[i]) return a[i] > b[i]
+    private fun compareVersions(a: String, b: String): Int {
+        val left = versionParts(a) ?: return -1
+        val right = versionParts(b) ?: return 1
+        for (i in left.indices) {
+            if (left[i] != right[i]) return left[i].compareTo(right[i])
         }
-        return false
+        return 0
     }
 
     private fun installedVersion(context: Context): String {
@@ -48,9 +52,14 @@ object AppUpdateManager {
         return info.versionName ?: "0.0.0"
     }
 
-    /** Null means the user already has the newest published full release. */
-    fun findUpdate(context: Context): Release? {
-        val conn = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
+    /**
+     * Search a bounded list because GitHub's /latest excludes prereleases and
+     * cannot serve the Beta channel. Only published non-draft assets are eligible.
+     * A newer *numeric* version is required; the APK versionCode check remains
+     * in download() and Android must still validate the release signing key.
+     */
+    fun findUpdate(context: Context, channel: Channel): Release? {
+        val conn = (URL(RELEASES_API).openConnection() as HttpURLConnection).apply {
             connectTimeout = 10000
             readTimeout = 15000
             setRequestProperty("Accept", "application/vnd.github+json")
@@ -59,33 +68,53 @@ object AppUpdateManager {
         val body = try {
             if (conn.responseCode != HttpURLConnection.HTTP_OK)
                 throw IOException("GitHub Releases error: HTTP " + conn.responseCode)
-            conn.inputStream.bufferedReader().use { it.readText().take(250000) }
+            conn.inputStream.bufferedReader().use { it.readText().take(500000) }
         } finally {
             conn.disconnect()
         }
-        val json = JSONObject(body)
-        if (json.optBoolean("draft") || json.optBoolean("prerelease")) return null
-        val releaseVersion = json.optString("tag_name").let { versionPattern.find(it)?.value }
-            ?.removePrefix("v")?.substringBefore('-')?.substringBefore('+')
-            ?: throw IOException("Latest GitHub Release has no valid version.")
-        if (!newer(releaseVersion, installedVersion(context))) return null
-
-        val assetName = "KUROMH-v" + releaseVersion + "-Release.apk"
-        val assets = json.optJSONArray("assets") ?: throw IOException("Release APK is missing.")
-        for (i in 0 until assets.length()) {
-            val asset = assets.optJSONObject(i) ?: continue
-            if (asset.optString("name") != assetName) continue
-            val url = asset.optString("browser_download_url")
-            if (!url.startsWith("https://github.com/$OWNER_REPO/releases/download/"))
-                throw IOException("Untrusted update URL.")
-            val size = asset.optLong("size")
-            if (size <= 0 || size > MAX_APK_SIZE) throw IOException("Unexpected update APK size.")
-            val digest = asset.optString("digest")
-            val checksum = if (digest.startsWith("sha256:")) digest.removePrefix("sha256:") else null
-            val notes = json.optString("body").take(600)
-            return Release(releaseVersion, notes, url, size, checksum)
+        val releases = org.json.JSONArray(body)
+        val installed = installedVersion(context)
+        var best: Release? = null
+        for (i in 0 until releases.length()) {
+            val item = releases.optJSONObject(i) ?: continue
+            if (item.optBoolean("draft")) continue
+            val isPre = item.optBoolean("prerelease")
+            if (isPre && channel == Channel.STABLE) continue
+            val tag = item.optString("tag_name")
+            val version = versionPattern.find(tag)?.let { match ->
+                match.value.removePrefix("v").trimEnd('-', '+')
+            } ?: continue
+            if (compareVersions(version, installed) <= 0) continue
+            val assetName = "KUROMH-v$version-Release.apk"
+            val assets = item.optJSONArray("assets") ?: continue
+            for (j in 0 until assets.length()) {
+                val asset = assets.optJSONObject(j) ?: continue
+                if (asset.optString("name") != assetName) continue
+                val url = asset.optString("browser_download_url")
+                if (!url.startsWith("https://github.com/$OWNER_REPO/releases/download/")) continue
+                val size = asset.optLong("size")
+                if (size <= 0 || size > MAX_APK_SIZE) continue
+                val digest = asset.optString("digest")
+                val checksum = if (digest.matches(Regex("""sha256:[a-fA-F0-9]{64}""")))
+                    digest.removePrefix("sha256:") else null
+                val candidate = Release(
+                    version = version,
+                    notes = item.optString("body").take(600),
+                    downloadUrl = url,
+                    expectedSize = size,
+                    sha256 = checksum,
+                    prerelease = isPre
+                )
+                val previous = best
+                val better = previous == null ||
+                    compareVersions(candidate.version, previous.version) > 0 ||
+                    (compareVersions(candidate.version, previous.version) == 0 &&
+                        previous.prerelease && !candidate.prerelease)
+                if (better) best = candidate
+                break
+            }
         }
-        throw IOException("Release " + releaseVersion + " has no matching signed APK.")
+        return best
     }
 
     private fun openApprovedDownload(address: String): HttpURLConnection {
