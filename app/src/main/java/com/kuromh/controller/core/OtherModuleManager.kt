@@ -48,7 +48,7 @@ object OtherModuleManager {
                 "elif command -v ksud >/dev/null 2>&1; then ksud module install '$staged'; " +
                 "elif command -v apd >/dev/null 2>&1; then apd module install '$staged'; " +
                 "else echo KURO_NO_MANAGER; exit 2; fi; " +
-                "if [ \\$? -eq 0 ]; then echo KURO_INSTALL_SUCCESS; fi"
+                "if [ $? -eq 0 ]; then echo KURO_INSTALL_SUCCESS; fi"
             )
             if (output.contains("KURO_NO_MANAGER")) {
                 Result(false, "No supported Magisk/KernelSU/APatch module installer found.")
