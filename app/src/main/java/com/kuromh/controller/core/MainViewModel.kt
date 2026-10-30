@@ -168,6 +168,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _externalBusy = MutableStateFlow(false)
     val externalBusy: StateFlow<Boolean> = _externalBusy.asStateFlow()
 
+    private val _selectedGame = MutableStateFlow(ModuleGames.Game())
+    val selectedGame: StateFlow<ModuleGames.Game> = _selectedGame.asStateFlow()
+
+    private val _gameLaunchMessage = MutableStateFlow("")
+    val gameLaunchMessage: StateFlow<String> = _gameLaunchMessage.asStateFlow()
+
+    private var currentGameModuleId: String? = null
+
+    fun detectGame(moduleId: String) {
+        currentGameModuleId = moduleId
+        _selectedGame.value = ModuleGames.Game()
+        _gameLaunchMessage.value = ""
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                ModuleGames.detect(getApplication<Application>(), moduleId)
+            }
+            if (currentGameModuleId == moduleId) _selectedGame.value = info
+        }
+    }
+
+    fun openSelectedGame() {
+        val game = _selectedGame.value
+        _gameLaunchMessage.value =
+            if (ModuleGames.launch(getApplication(), game)) ""
+            else "Could not launch the game. Verify it is installed and enabled."
+    }
+
     private var selectedExternalModule: String? = null
 
     fun openExternalControls(id: String) {
