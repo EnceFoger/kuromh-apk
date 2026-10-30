@@ -52,7 +52,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 val available = withContext(Dispatchers.IO) {
-                    AppUpdateManager.findUpdate(getApplication())
+                    AppUpdateManager.findUpdate(getApplication<Application>())
                 }
                 prefs.edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply()
                 val current = _state.value
@@ -88,7 +88,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 val downloaded = withContext(Dispatchers.IO) {
-                    AppUpdateManager.download(getApplication(), release) { progress ->
+                    AppUpdateManager.download(getApplication<Application>(), release) { progress ->
                         _state.value = _state.value.copy(progress = progress)
                     }
                 }
