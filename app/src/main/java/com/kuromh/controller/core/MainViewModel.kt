@@ -93,6 +93,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _toggleFailed = MutableStateFlow(false)
     val toggleFailed: StateFlow<Boolean> = _toggleFailed.asStateFlow()
 
+    private val _moduleToggleBusy = MutableStateFlow(false)
+    val moduleToggleBusy: StateFlow<Boolean> = _moduleToggleBusy.asStateFlow()
+
+
     private val _otherModules = MutableStateFlow<List<OtherModuleManager.Module>>(emptyList())
     val otherModules: StateFlow<List<OtherModuleManager.Module>> = _otherModules.asStateFlow()
 
@@ -102,13 +106,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _otherModuleBusy = MutableStateFlow(false)
     val otherModuleBusy: StateFlow<Boolean> = _otherModuleBusy.asStateFlow()
 
+    private val _otherTogglePending = MutableStateFlow<Set<String>>(emptySet())
+    val otherTogglePending: StateFlow<Set<String>> = _otherTogglePending.asStateFlow()
+    private var otherRefreshRevision = 0
+
+
     fun refreshOtherModules() {
+        val revision = ++otherRefreshRevision
         if (!_isRootGranted.value) {
             _otherModules.value = emptyList()
             return
         }
         viewModelScope.launch {
-            _otherModules.value = withContext(Dispatchers.IO) { OtherModuleManager.list() }
+            val listed = withContext(Dispatchers.IO) { OtherModuleManager.list() }
+            if (revision != otherRefreshRevision || !_isRootGranted.value) return@launch
+            // Keep immediate switch feedback while an in-flight root command completes.
+            val pending = _otherTogglePending.value
+            val optimistic = _otherModules.value.associateBy { it.id }
+            _otherModules.value = listed.map { fresh ->
+                if (fresh.id in pending) fresh.copy(enabled = optimistic[fresh.id]?.enabled ?: fresh.enabled)
+                else fresh
+            }
         }
     }
 
@@ -137,12 +155,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleOtherModule(id: String, enabled: Boolean) {
-        if (!_isRootGranted.value || _otherModuleBusy.value) return
-        _otherModuleBusy.value = true
+        if (!_isRootGranted.value || _otherModuleBusy.value || id in _otherTogglePending.value) return
+        val old = _otherModules.value.firstOrNull { it.id == id } ?: return
+        if (old.enabled == enabled) return
+
+        ++otherRefreshRevision // Discard any older refresh that would reset this optimistic value.
+        _otherTogglePending.value = _otherTogglePending.value + id
+        _otherModules.value = _otherModules.value.map {
+            if (it.id == id) it.copy(enabled = enabled) else it
+        }
+        _otherModuleResult.value = ""
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { OtherModuleManager.setEnabled(id, enabled) }
-            _otherModuleResult.value = result.message
-            _otherModuleBusy.value = false
+            if (!result.ok) {
+                _otherModules.value = _otherModules.value.map {
+                    if (it.id == id) it.copy(enabled = old.enabled) else it
+                }
+            }
+            _otherModuleResult.value = if (result.ok) "Reboot to apply." else result.message
+            _otherTogglePending.value = _otherTogglePending.value - id
             refreshOtherModules()
         }
     }
@@ -167,6 +198,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _externalBusy = MutableStateFlow(false)
     val externalBusy: StateFlow<Boolean> = _externalBusy.asStateFlow()
+
 
     private val _selectedGame = MutableStateFlow(ModuleGames.Game())
     val selectedGame: StateFlow<ModuleGames.Game> = _selectedGame.asStateFlow()
@@ -222,14 +254,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveExternalSetting(id: String, key: String, value: String) {
         if (!_isRootGranted.value || _externalBusy.value || selectedExternalModule != id) return
+        val before = _externalPanel.value?.takeIf { it.moduleId == id } ?: return
+        if (before.controls.none { it.key == key }) return
+
+        // Display the requested state immediately; a failure restores the previous state.
+        _externalPanel.value = before.copy(
+            controls = before.controls.map { if (it.key == key) it.copy(value = value) else it }
+        )
+        _externalMessage.value = ""
         _externalBusy.value = true
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { ExternalModControls.save(id, key, value) }
-            _externalMessage.value = result.message
-            _externalBusy.value = false
-            if (result.ok && selectedExternalModule == id) {
-                _externalPanel.value = withContext(Dispatchers.IO) { ExternalModControls.load(id).panel }
+            if (selectedExternalModule == id) {
+                if (result.ok) {
+                    val reloaded = withContext(Dispatchers.IO) { ExternalModControls.load(id).panel }
+                    if (reloaded != null) _externalPanel.value = reloaded
+                } else {
+                    _externalPanel.value = before
+                }
+                _externalMessage.value = if (result.ok) "" else result.message
             }
+            _externalBusy.value = false
         }
     }
 
@@ -277,9 +322,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isRootGranted.value = true
             refreshOtherModules()
             _moduleInstalled.value = snapshot.installed
-            _moduleEnabled.value = snapshot.enabled
             _moduleRebootPending.value = snapshot.rebootPending
-            _isModuleActive.value = snapshot.installed && snapshot.enabled && !snapshot.rebootPending
+            if (!_moduleToggleBusy.value) {
+                _moduleEnabled.value = snapshot.enabled
+                _isModuleActive.value = snapshot.installed && snapshot.enabled && !snapshot.rebootPending
+            }
             _moduleVersion.value = snapshot.version
             _configPath.value = snapshot.configPath
             _config.value = snapshot.config
@@ -367,11 +414,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Toggle ON/OFF modul. OFF = modul langsung berhenti bekerja (tanpa reboot). */
     fun setModuleEnabled(enabled: Boolean) {
-        if (!_isRootGranted.value) return
+        if (!_isRootGranted.value || !_moduleInstalled.value || _moduleToggleBusy.value) return
+        if (_moduleEnabled.value == enabled) return
+        val previous = _moduleEnabled.value
+        refreshJob?.cancel() // Prevent a previous root query from overriding the new switch state.
+        _moduleToggleBusy.value = true
+        _toggleFailed.value = false
+        _moduleEnabled.value = enabled
+        _isModuleActive.value = enabled && !_moduleRebootPending.value
         viewModelScope.launch {
-            _toggleFailed.value = false
             val ok = withContext(Dispatchers.IO) { ModuleManager.setEnabled(prefs, enabled) }
-            _toggleFailed.value = !ok
+            if (!ok) {
+                _moduleEnabled.value = previous
+                _isModuleActive.value = previous && !_moduleRebootPending.value
+                _toggleFailed.value = true
+            }
+            _moduleToggleBusy.value = false
             refreshStatus()
         }
     }
@@ -396,6 +454,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean(KEY_CACHE_VALID, false).apply()
         _isRootGranted.value = false
         _otherModules.value = emptyList()
+        _otherTogglePending.value = emptySet()
+        _moduleToggleBusy.value = false
         _isModuleActive.value = false
         _moduleInstalled.value = false
         _moduleEnabled.value = false
