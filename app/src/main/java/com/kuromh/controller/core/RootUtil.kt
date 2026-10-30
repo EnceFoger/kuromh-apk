@@ -1,49 +1,29 @@
 package com.kuromh.controller.core
 
-import java.io.BufferedReader
-import java.io.DataOutputStream
-import java.io.InputStreamReader
-
 object RootUtil {
-    fun isRootAvailable(): Boolean {
-        var process: Process? = null
-        return try {
-            process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val output = reader.readLine()
-            process.waitFor()
-            output?.contains("uid=0(root)") == true
-        } catch (e: Exception) {
-            false
-        } finally {
-            process?.destroy()
-        }
-    }
 
+    /** Cek akses root. Memblokir sampai dialog root dijawab, jadi panggil dari background thread. */
+    fun isRootAvailable(): Boolean = execute("id").contains("uid=0")
+
+    /** Jalankan [command] sebagai root dan kembalikan stdout (sudah di-trim). Panggil dari background thread. */
     fun execute(command: String): String {
         var process: Process? = null
-        var output = ""
-        try {
-            process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-
-            os.writeBytes("$command\n")
-            os.writeBytes("exit\n")
-            os.flush()
-
-            val sb = java.lang.StringBuilder()
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                sb.append(line).append("\n")
+        return try {
+            val p = ProcessBuilder("su")
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+            process = p
+            p.outputStream.bufferedWriter().use { writer ->
+                writer.write(command)
+                writer.write("\nexit\n")
             }
-            process.waitFor()
-            output = sb.toString().trim()
+            val output = p.inputStream.bufferedReader().use { it.readText() }
+            p.waitFor()
+            output.trim()
         } catch (e: Exception) {
-            e.printStackTrace()
+            ""
         } finally {
             process?.destroy()
         }
-        return output
     }
 }
