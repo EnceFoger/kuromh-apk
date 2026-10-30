@@ -41,6 +41,7 @@ fun ControllerScreen(viewModel: MainViewModel) {
     val config by viewModel.config.collectAsState()
     val isRootGranted by viewModel.isRootGranted.collectAsState()
     val saveStatus by viewModel.saveStatus.collectAsState()
+    val configPath by viewModel.configPath.collectAsState()
 
     // State lokal; di-reset setiap config dari modul berubah
     var unitySpeed by remember(config) { mutableFloatStateOf(config.unitySpeed) }
@@ -62,6 +63,13 @@ fun ControllerScreen(viewModel: MainViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Enable Root System in Home first to edit the module config.",
+                color = Color.Gray,
+                fontSize = 14.sp
+            )
+        } else if (configPath == MainViewModel.NOT_FOUND) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Config not found. Launch the game once with the module active so it creates kuro_mirror_high.cfg, then press Refresh in Home.",
                 color = Color.Gray,
                 fontSize = 14.sp
             )
@@ -150,7 +158,7 @@ fun ControllerScreen(viewModel: MainViewModel) {
 
         when (saveStatus) {
             SaveStatus.SUCCESS -> StatusText("Config saved.", Color.White)
-            SaveStatus.FAILED -> StatusText("Failed to write config. Check root access.", Color.Gray)
+            SaveStatus.FAILED -> StatusText("Failed to write config. Make sure the game has been launched once so the config exists.", Color.Gray)
             SaveStatus.IDLE -> Unit
         }
     }
