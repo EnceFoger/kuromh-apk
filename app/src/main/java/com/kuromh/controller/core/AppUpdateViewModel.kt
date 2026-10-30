@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,7 @@ import java.io.File
 
 data class AppUpdateState(
     val checking: Boolean = false,
+    val channel: AppUpdateManager.Channel = AppUpdateManager.Channel.STABLE,
     val release: AppUpdateManager.Release? = null,
     val dialogVisible: Boolean = false,
     val downloading: Boolean = false,
@@ -26,11 +28,16 @@ data class AppUpdateState(
 /** Update polling runs only while the app is used, never a background service. */
 class AppUpdateViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("kuromh_updates", Context.MODE_PRIVATE)
-    private val _state = MutableStateFlow(AppUpdateState())
+    private val _state = MutableStateFlow(
+        AppUpdateState(channel = if (prefs.getString("update_channel", "stable") == "beta")
+            AppUpdateManager.Channel.BETA else AppUpdateManager.Channel.STABLE)
+    )
+    private var checkJob: Job? = null
     val state: StateFlow<AppUpdateState> = _state.asStateFlow()
 
     companion object {
         private const val LAST_CHECK = "last_checked_ms"
+        private const val CHANNEL_PREF = "update_channel"
         private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
     }
 
@@ -43,17 +50,41 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun checkNow() = check(manual = true)
 
+    fun setChannel(channel: AppUpdateManager.Channel) {
+        if (_state.value.channel == channel || _state.value.downloading) return
+        prefs.edit()
+            .putString(CHANNEL_PREF, if (channel == AppUpdateManager.Channel.BETA) "beta" else "stable")
+            .remove(LAST_CHECK)
+            .apply()
+        checkJob?.cancel()
+        _state.value = _state.value.copy(
+            channel = channel,
+            checking = false,
+            release = null,
+            dialogVisible = false,
+            readyApkPath = null,
+            progress = 0,
+            message = "",
+            manualStatus = ""
+        )
+        // Switching channel should recheck immediately, not wait another 24 hours.
+        check(manual = true)
+    }
+
     private fun check(manual: Boolean) {
         if (_state.value.checking || _state.value.downloading) return
         _state.value = _state.value.copy(
             checking = true, manualStatus = if (manual) "Checking updates..." else "",
             message = ""
         )
-        viewModelScope.launch {
+        val selectedChannel = _state.value.channel
+        checkJob = viewModelScope.launch {
             try {
                 val available = withContext(Dispatchers.IO) {
-                    AppUpdateManager.findUpdate(getApplication<Application>())
+                    AppUpdateManager.findUpdate(getApplication<Application>(), selectedChannel)
                 }
+                // A stale result from the previous channel must never reopen its dialog.
+                if (_state.value.channel != selectedChannel) return@launch
                 prefs.edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply()
                 val current = _state.value
                 _state.value = current.copy(
@@ -65,6 +96,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                     manualStatus = if (manual && available == null) "KUROMH is up to date." else ""
                 )
             } catch (e: Exception) {
+                if (_state.value.channel != selectedChannel) return@launch
                 _state.value = _state.value.copy(
                     checking = false,
                     manualStatus = if (manual) "Update check failed: " +

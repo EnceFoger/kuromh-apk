@@ -4,6 +4,15 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      release_channel:
+        description: "Publish as Beta pre-release or Stable release"
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - stable
 
 permissions:
   contents: write
@@ -100,11 +109,17 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ github.event.inputs.release_channel || 'beta' }}
         run: |
           TAG="v${VERSION}-build${{ github.run_number }}-attempt${{ github.run_attempt }}"
+          EXTRA_ARGS=()
+          if [ "$RELEASE_CHANNEL" != "stable" ]; then
+            EXTRA_ARGS+=(--prerelease)
+          fi
 
           gh release create "$TAG" \
             "KUROMH-v${VERSION}-Release.apk" \
             --title "KUROMH $TAG" \
             --generate-notes \
-            --target "${{ github.sha }}"
+            --target "${{ github.sha }}" \
+            "${EXTRA_ARGS[@]}"
