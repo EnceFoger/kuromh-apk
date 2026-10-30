@@ -1,6 +1,8 @@
 package com.kuromh.controller.core
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,15 +22,19 @@ private data class ModuleSnapshot(
     val config: ModuleConfig = ModuleConfig()
 )
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         const val NOT_DETECTED = "Not Detected"
         const val NOT_FOUND = "Not Found"
+        private const val PREFS_NAME = "kuromh_prefs"
+        private const val KEY_ROOT_TOGGLE = "root_toggle_enabled"
     }
 
-    // Apakah pengguna mengizinkan aplikasi memakai Root
-    private val _isRootToggleEnabled = MutableStateFlow(false)
+    private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    // Apakah pengguna mengizinkan aplikasi memakai Root (disimpan, tetap aktif setelah aplikasi dibuka ulang)
+    private val _isRootToggleEnabled = MutableStateFlow(prefs.getBoolean(KEY_ROOT_TOGGLE, false))
     val isRootToggleEnabled: StateFlow<Boolean> = _isRootToggleEnabled.asStateFlow()
 
     private val _isRootGranted = MutableStateFlow(false)
@@ -51,8 +57,14 @@ class MainViewModel : ViewModel() {
 
     private var refreshJob: Job? = null
 
+    init {
+        // Jika toggle tersimpan aktif, langsung cek root & modul saat aplikasi dibuka
+        refreshStatus()
+    }
+
     fun setRootToggle(enabled: Boolean) {
         _isRootToggleEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_ROOT_TOGGLE, enabled).apply()
         if (enabled) {
             refreshStatus()
         } else {
@@ -73,6 +85,7 @@ class MainViewModel : ViewModel() {
             if (!snapshot.rootGranted) {
                 // Toggle nyala tapi akses root ditolak
                 _isRootToggleEnabled.value = false
+                prefs.edit().putBoolean(KEY_ROOT_TOGGLE, false).apply()
                 resetState()
                 return@launch
             }
