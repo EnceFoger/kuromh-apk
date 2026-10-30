@@ -322,9 +322,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isRootGranted.value = true
             refreshOtherModules()
             _moduleInstalled.value = snapshot.installed
-            _moduleEnabled.value = snapshot.enabled
             _moduleRebootPending.value = snapshot.rebootPending
-            _isModuleActive.value = snapshot.installed && snapshot.enabled && !snapshot.rebootPending
+            if (!_moduleToggleBusy.value) {
+                _moduleEnabled.value = snapshot.enabled
+                _isModuleActive.value = snapshot.installed && snapshot.enabled && !snapshot.rebootPending
+            }
             _moduleVersion.value = snapshot.version
             _configPath.value = snapshot.configPath
             _config.value = snapshot.config
