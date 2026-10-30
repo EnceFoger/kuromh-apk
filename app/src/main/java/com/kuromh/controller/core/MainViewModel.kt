@@ -182,7 +182,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _gameLaunchMessage.value = ""
         viewModelScope.launch {
             val info = withContext(Dispatchers.IO) {
-                ModuleGames.detect(getApplication<Application>(), moduleId)
+                ModuleGames.detect(getApplication<Application>(), moduleId, _isRootGranted.value)
             }
             if (currentGameModuleId == moduleId) _selectedGame.value = info
         }
