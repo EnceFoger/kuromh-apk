@@ -47,10 +47,13 @@ object OtherModuleManager {
                 "if command -v magisk >/dev/null 2>&1; then magisk --install-module '$staged'; " +
                 "elif command -v ksud >/dev/null 2>&1; then ksud module install '$staged'; " +
                 "elif command -v apd >/dev/null 2>&1; then apd module install '$staged'; " +
-                "else echo KURO_NO_MANAGER; fi"
+                "else echo KURO_NO_MANAGER; exit 2; fi; " +
+                "if [ \\$? -eq 0 ]; then echo KURO_INSTALL_SUCCESS; fi"
             )
             if (output.contains("KURO_NO_MANAGER")) {
                 Result(false, "No supported Magisk/KernelSU/APatch module installer found.")
+            } else if (!output.contains("KURO_INSTALL_SUCCESS")) {
+                Result(false, "Root manager reported an installation failure.")
             } else {
                 val found = RootUtil.execute(
                     "if [ -f '$target/module.prop' ] || [ -f '$update/module.prop' ]; then echo KURO_OK; fi"
