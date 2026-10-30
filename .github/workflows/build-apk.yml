@@ -5,6 +5,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build and Sign Release APK
@@ -19,22 +22,41 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.2
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      # Pin Gradle 8.2 (sesuai AGP 8.2.0). Tidak perlu gradle wrapper.
+      - name: Set up Gradle 8.2
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: gradle assembleRelease --no-daemon --stacktrace
 
+      # Opsional: isi secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS
+      # supaya tanda tangan APK selalu sama (bisa update tanpa uninstall).
+      # Jika kosong, keystore baru dibuat tiap build.
       - name: Sign Release APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'kuromh123' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'kuromh_alias' }}
         run: |
-          keytool -genkey -v -keystore release.keystore -alias kuromh_alias -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=KUROMH, OU=KUROMH, O=KUROMH, C=ID" -storepass kuromh123 -keypass kuromh123
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
-          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-key-alias kuromh_alias --ks-pass pass:kuromh123 --key-pass pass:kuromh123 --out KUROMH-v1.0-Release.apk app/build/outputs/apk/release/app-release-unsigned.apk
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          else
+            keytool -genkeypair -v -keystore release.keystore -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=KUROMH, OU=KUROMH, O=KUROMH, C=ID" \
+              -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD"
+          fi
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks release.keystore \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --out KUROMH-v1.0-Release.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BUILD_TOOLS_DIR/apksigner" verify KUROMH-v1.0-Release.apk
 
       - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4
