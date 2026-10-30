@@ -29,8 +29,10 @@ data class AppUpdateState(
 class AppUpdateViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("kuromh_updates", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(
-        AppUpdateState(channel = if (prefs.getString("update_channel", "stable") == "beta")
-            AppUpdateManager.Channel.BETA else AppUpdateManager.Channel.STABLE)
+        // Default new installs to Beta while KUROMH is distributed as a pre-release.
+        // Respect a user's explicitly saved Stable preference.
+        AppUpdateState(channel = if (prefs.getString(CHANNEL_PREF, "beta") == "stable")
+            AppUpdateManager.Channel.STABLE else AppUpdateManager.Channel.BETA)
     )
     private var checkJob: Job? = null
     val state: StateFlow<AppUpdateState> = _state.asStateFlow()
