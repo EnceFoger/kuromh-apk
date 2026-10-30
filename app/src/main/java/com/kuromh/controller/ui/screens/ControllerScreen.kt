@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -26,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,8 +53,13 @@ fun ControllerScreen(viewModel: MainViewModel) {
     var godMode by remember(config) { mutableStateOf(config.godMode) }
     var dump by remember(config) { mutableStateOf(config.dump) }
 
-    val maxSpeed = config.maxUnitySpeed.coerceAtLeast(1f)
-    val maxDamage = config.maxDamageRate.coerceAtLeast(1f)
+    // Batas maksimum slider (bisa diubah lewat kartu "Slider Limits")
+    var maxSpeedText by remember(config) { mutableStateOf(formatLimit(config.maxUnitySpeed)) }
+    var maxDamageText by remember(config) { mutableStateOf(formatLimit(config.maxDamageRate)) }
+
+    val maxSpeed = parseLimit(maxSpeedText) ?: config.maxUnitySpeed.coerceIn(LIMIT_MIN, LIMIT_MAX)
+    val maxDamage = parseLimit(maxDamageText) ?: config.maxDamageRate.coerceIn(LIMIT_MIN, LIMIT_MAX)
+    val limitsValid = parseLimit(maxSpeedText) != null && parseLimit(maxDamageText) != null
 
     Column(
         modifier = Modifier
@@ -96,6 +105,15 @@ fun ControllerScreen(viewModel: MainViewModel) {
         )
         Spacer(modifier = Modifier.height(12.dp))
 
+        LimitsCard(
+            maxSpeedText = maxSpeedText,
+            maxDamageText = maxDamageText,
+            enabled = isRootGranted,
+            onMaxSpeedChange = { maxSpeedText = sanitizeLimit(it) },
+            onMaxDamageChange = { maxDamageText = sanitizeLimit(it) }
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
         SwitchCard(
             title = "God Mode",
             subtitle = if (godMode) "On" else "Off",
@@ -127,6 +145,8 @@ fun ControllerScreen(viewModel: MainViewModel) {
                     damageRate = config.damageRate
                     godMode = config.godMode
                     dump = config.dump
+                    maxSpeedText = formatLimit(config.maxUnitySpeed)
+                    maxDamageText = formatLimit(config.maxDamageRate)
                 },
                 enabled = isRootGranted,
                 modifier = Modifier.weight(1f)
@@ -138,14 +158,17 @@ fun ControllerScreen(viewModel: MainViewModel) {
                     viewModel.clearSaveStatus()
                     viewModel.updateConfig(
                         config.copy(
-                            unitySpeed = unitySpeed,
-                            damageRate = damageRate,
+                            // Nilai slider dijepit agar tidak melebihi batas baru
+                            unitySpeed = unitySpeed.coerceIn(0.1f, maxSpeed),
+                            damageRate = damageRate.coerceIn(0.1f, maxDamage),
                             godMode = godMode,
-                            dump = dump
+                            dump = dump,
+                            maxUnitySpeed = maxSpeed,
+                            maxDamageRate = maxDamage
                         )
                     )
                 },
-                enabled = isRootGranted,
+                enabled = isRootGranted && limitsValid,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
                     contentColor = Color.Black
@@ -191,7 +214,10 @@ private fun ValueSliderCard(
             }
             Slider(
                 value = value.coerceIn(range),
-                onValueChange = { onValueChange((it * 10).roundToInt() / 10f) }, // langkah 0.1
+                onValueChange = {
+                    // langkah 0.1; jika batas besar (>50) pakai langkah 1 agar slider tetap presisi
+                    onValueChange(if (range.endInclusive > 50f) it.roundToInt().toFloat() else (it * 10).roundToInt() / 10f)
+                },
                 valueRange = range,
                 enabled = enabled,
                 colors = SliderDefaults.colors(
@@ -202,4 +228,74 @@ private fun ValueSliderCard(
             )
         }
     }
+}
+
+private const val LIMIT_MIN = 1f
+private const val LIMIT_MAX = 999f
+
+private fun formatLimit(v: Float): String = String.format(Locale.US, "%.1f", v)
+
+/** Hanya izinkan angka, satu titik/koma desimal; koma diganti titik agar aman di locale Indonesia. */
+private fun sanitizeLimit(input: String): String {
+    val cleaned = input.replace(',', '.').filter { it.isDigit() || it == '.' }
+    val firstDot = cleaned.indexOf('.')
+    return if (firstDot < 0) cleaned
+    else cleaned.substring(0, firstDot + 1) + cleaned.substring(firstDot + 1).replace(".", "")
+}
+
+/** Null jika kosong / bukan angka / di luar rentang [LIMIT_MIN]..[LIMIT_MAX]. */
+private fun parseLimit(text: String): Float? =
+    text.toFloatOrNull()?.takeIf { it in LIMIT_MIN..LIMIT_MAX }
+
+@Composable
+private fun LimitsCard(
+    maxSpeedText: String,
+    maxDamageText: String,
+    enabled: Boolean,
+    onMaxSpeedChange: (String) -> Unit,
+    onMaxDamageChange: (String) -> Unit
+) {
+    KuroCard {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Slider Limits", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Set the maximum value of each slider (${formatLimit(LIMIT_MIN)} - ${formatLimit(LIMIT_MAX)}). Press Apply to save.",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LimitField("Max Unity Speed", maxSpeedText, enabled, onMaxSpeedChange, Modifier.weight(1f))
+                LimitField("Max Damage Rate", maxDamageText, enabled, onMaxDamageChange, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LimitField(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, fontSize = 12.sp) },
+        singleLine = true,
+        enabled = enabled,
+        isError = parseLimit(value) == null,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        colors = TextFieldDefaults.outlinedTextFieldColors(
+            textColor = Color.White,
+            cursorColor = Color.White,
+            focusedBorderColor = Color.White,
+            unfocusedBorderColor = Color.Gray,
+            focusedLabelColor = Color.White,
+            unfocusedLabelColor = Color.Gray
+        ),
+        modifier = modifier
+    )
 }
