@@ -106,5 +106,5 @@ jobs:
           gh release create "$TAG" \
             "KUROMH-v${VERSION}-Release.apk" \
             --title "KUROMH $TAG" \
-            --notes "Automated release build" \
+            --generate-notes \
             --target "${{ github.sha }}"

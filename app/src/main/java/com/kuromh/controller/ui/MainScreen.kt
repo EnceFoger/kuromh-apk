@@ -23,7 +23,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.kuromh.controller.core.AppUpdateViewModel
 import com.kuromh.controller.core.MainViewModel
+import com.kuromh.controller.ui.components.AppUpdateDialog
 import com.kuromh.controller.ui.screens.ControllerScreen
 import com.kuromh.controller.ui.screens.DashboardScreen
 import com.kuromh.controller.ui.screens.SettingsScreen
@@ -36,7 +38,7 @@ private enum class Destination(val route: String, val label: String, val icon: I
 }
 
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun MainScreen(viewModel: MainViewModel, updates: AppUpdateViewModel) {
     val navController = rememberNavController()
     // Item terpilih diambil dari back stack, jadi selalu sinkron (termasuk saat tombol Back)
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -74,8 +76,9 @@ fun MainScreen(viewModel: MainViewModel) {
             NavHost(navController, startDestination = Destination.Home.route) {
                 composable(Destination.Home.route) { DashboardScreen(viewModel) }
                 composable(Destination.Controller.route) { ControllerScreen(viewModel) }
-                composable(Destination.Settings.route) { SettingsScreen(viewModel) }
+                composable(Destination.Settings.route) { SettingsScreen(viewModel, updates) }
             }
         }
     }
+    AppUpdateDialog(updates)
 }
