@@ -9,8 +9,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,6 +25,14 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val configPath by viewModel.configPath.collectAsState()
     val isRootGranted by viewModel.isRootGranted.collectAsState()
     val isRootToggleEnabled by viewModel.isRootToggleEnabled.collectAsState()
+    val context = LocalContext.current
+    val appVersion = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+        } catch (e: Exception) {
+            "?"
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -32,7 +42,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
         Spacer(modifier = Modifier.height(20.dp))
 
-        InfoCard("App Information", "KUROMH Controller v1.0")
+        InfoCard("App Information", "KUROMH Controller v$appVersion")
         Spacer(modifier = Modifier.height(8.dp))
 
         SwitchCard(
