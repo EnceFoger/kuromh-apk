@@ -120,7 +120,7 @@ object AppUpdateManager {
     /** Download to private cache, verify official SHA-256 (when provided) and APK identity. */
     fun download(context: Context, release: Release, onProgress: (Int) -> Unit): File {
         val folder = File(context.cacheDir, "updates").apply { mkdirs() }
-        val temp = File(folder, "kuromh-update.apk.part")
+        val temp = File(folder, "kuromh-staging.apk")
         val ready = File(folder, "kuromh-update.apk")
         temp.delete()
         val digest = MessageDigest.getInstance("SHA-256")
@@ -144,7 +144,7 @@ object AppUpdateManager {
             }
             if (bytesReadTotal != release.expectedSize)
                 throw IOException("Download is incomplete.")
-            val actualSha = digest.digest().joinToString("") { "%02x".format(it) }
+            val actualSha = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
             if (release.sha256 != null &&
                 !actualSha.equals(release.sha256, ignoreCase = true)
             ) throw IOException("APK SHA-256 does not match GitHub Release.")
@@ -156,10 +156,12 @@ object AppUpdateManager {
                 throw IOException("Update package name does not match KUROMH.")
             @Suppress("DEPRECATION")
             val current = context.packageManager.getPackageInfo(context.packageName, 0)
+            @Suppress("DEPRECATION")
             val archiveCode = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode
-                else @Suppress("DEPRECATION") archive.versionCode.toLong()
+                else archive.versionCode.toLong()
+            @Suppress("DEPRECATION")
             val currentCode = if (Build.VERSION.SDK_INT >= 28) current.longVersionCode
-                else @Suppress("DEPRECATION") current.versionCode.toLong()
+                else current.versionCode.toLong()
             if (archiveCode <= currentCode)
                 throw IOException("Update versionCode must be higher than installed APK.")
 
