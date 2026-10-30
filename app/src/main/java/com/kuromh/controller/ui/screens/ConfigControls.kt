@@ -28,6 +28,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kuromh.controller.core.MainViewModel
 import com.kuromh.controller.core.SaveStatus
+import com.kuromh.controller.ui.components.InfoButton
 import com.kuromh.controller.ui.components.KuroCard
 import com.kuromh.controller.ui.components.SwitchCard
 import java.util.Locale
@@ -58,6 +60,8 @@ fun ModuleConfigControls(viewModel: MainViewModel) {
     val config by viewModel.config.collectAsState()
     val isRootGranted by viewModel.isRootGranted.collectAsState()
     val saveStatus by viewModel.saveStatus.collectAsState()
+    val configWriteMessage by viewModel.configWriteMessage.collectAsState()
+    val configSaving by viewModel.configSaving.collectAsState()
     val configPath by viewModel.configPath.collectAsState()
 
     // State lokal; di-reset setiap config dari modul berubah
@@ -67,6 +71,18 @@ fun ModuleConfigControls(viewModel: MainViewModel) {
     var dump by remember(config) { mutableStateOf(config.dump) }
     var maxSpeed by remember(config) { mutableFloatStateOf(config.maxUnitySpeed.coerceIn(LIMIT_MIN, LIMIT_MAX)) }
     var maxDamage by remember(config) { mutableFloatStateOf(config.maxDamageRate.coerceIn(LIMIT_MIN, LIMIT_MAX)) }
+
+    // Restore the last verified values if Apply fails, instead of displaying fake ON state.
+    LaunchedEffect(saveStatus) {
+        if (saveStatus == SaveStatus.FAILED) {
+            unitySpeed = config.unitySpeed
+            damageRate = config.damageRate
+            godMode = config.godMode
+            dump = config.dump
+            maxSpeed = config.maxUnitySpeed.coerceIn(LIMIT_MIN, LIMIT_MAX)
+            maxDamage = config.maxDamageRate.coerceIn(LIMIT_MIN, LIMIT_MAX)
+        }
+    }
 
     // Slider mana yang sedang diubah batas maksimumnya (null = dialog tertutup)
     var editingLimit by remember { mutableStateOf<LimitTarget?>(null) }
@@ -89,12 +105,14 @@ fun ModuleConfigControls(viewModel: MainViewModel) {
     // Dipakai di dalam ControllerScreen (yang sudah punya scroll & judul), jadi tidak scroll sendiri
     Column(modifier = Modifier.fillMaxWidth()) {
         if (isRootGranted && configPath == MainViewModel.NOT_FOUND) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Config not found. Launch the game once with the module active so it creates kuro_mirror_high.cfg, then press Refresh in Home.",
-                color = Color.Gray,
-                fontSize = 14.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Config not connected", color = Color.Gray, fontSize = 13.sp,
+                    modifier = Modifier.weight(1f))
+                InfoButton("Config", "Open the target game at least once, then tap Apply. KUROMH can create the config only if the game's files folder already exists. Reboot if the module was just installed.")
+            }
         }
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -161,20 +179,27 @@ fun ModuleConfigControls(viewModel: MainViewModel) {
             }
             Button(
                 onClick = { save() },
-                enabled = isRootGranted,
+                enabled = isRootGranted && !configSaving,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
                     contentColor = Color.Black
                 ),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Apply")
+                Text(if (configSaving) "Saving..." else "Apply")
             }
         }
 
         when (saveStatus) {
-            SaveStatus.SUCCESS -> StatusText("Config saved.", Color.White)
-            SaveStatus.FAILED -> StatusText("Failed to write config. Make sure the game has been launched once so the config exists.", Color.Gray)
+            SaveStatus.SUCCESS -> StatusText("Config connected", Color.White)
+            SaveStatus.FAILED -> {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Config gagal tersimpan", color = Color.Gray, fontSize = 13.sp,
+                        modifier = Modifier.weight(1f))
+                    InfoButton("Config error", configWriteMessage)
+                }
+            }
             SaveStatus.IDLE -> Unit
         }
     }
