@@ -22,6 +22,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kuromh.controller.core.InstallStatus
 import com.kuromh.controller.core.MainViewModel
+import com.kuromh.controller.core.ModuleManager
 import com.kuromh.controller.ui.components.KuroCard
 import com.kuromh.controller.ui.components.StatusCard
 import com.kuromh.controller.ui.components.SwitchCard
@@ -50,6 +55,24 @@ fun ControllerScreen(viewModel: MainViewModel) {
     val rebootPending by viewModel.moduleRebootPending.collectAsState()
     val install by viewModel.installState.collectAsState()
     val toggleFailed by viewModel.toggleFailed.collectAsState()
+    val otherModules by viewModel.otherModules.collectAsState()
+    val otherBusy by viewModel.otherModuleBusy.collectAsState()
+    val otherResult by viewModel.otherModuleResult.collectAsState()
+    var selectedModuleId by rememberSaveable { mutableStateOf(ModuleManager.MODULE_ID) }
+
+    LaunchedEffect(isRootGranted) {
+        if (isRootGranted) viewModel.refreshOtherModules()
+    }
+    LaunchedEffect(selectedModuleId, isRootGranted) {
+        viewModel.detectGame(selectedModuleId)
+        if (selectedModuleId == ModuleManager.MODULE_ID) viewModel.closeExternalControls()
+        else viewModel.openExternalControls(selectedModuleId)
+    }
+
+    val extraZipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) viewModel.installOtherModule(uri)
+    }
+
 
     // Pilih file zip modul sendiri (fallback jika installer bermasalah)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -82,6 +105,41 @@ fun ControllerScreen(viewModel: MainViewModel) {
         }
         Spacer(modifier = Modifier.height(20.dp))
 
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Installed Modules", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(8.dp))
+        KuroCard {
+            Column(modifier = Modifier.padding(12.dp)) {
+                OutlinedButton(
+                    onClick = { selectedModuleId = ModuleManager.MODULE_ID },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (selectedModuleId == ModuleManager.MODULE_ID) "• Kuro Mirror High" else "Kuro Mirror High")
+                }
+                otherModules.forEach { mod ->
+                    OutlinedButton(
+                        onClick = { selectedModuleId = mod.id },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (selectedModuleId == mod.id) "• " + mod.name else mod.name)
+                    }
+                }
+                if (otherModules.isEmpty()) {
+                    Text("No additional modules detected.", color = Color.Gray, fontSize = 12.sp)
+                }
+                Button(
+                    onClick = { extraZipPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    enabled = isRootGranted && !otherBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Install Other Module ZIP") }
+                if (otherResult.isNotEmpty()) Text(otherResult, color = Color.Gray, fontSize = 12.sp)
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (selectedModuleId == ModuleManager.MODULE_ID) {
+        ModuleGameSection(viewModel, selectedModuleId, installed)
+        Spacer(modifier = Modifier.height(12.dp))
         StatusCard("Kuro Mirror High", statusText, active && enabled)
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -190,5 +248,9 @@ fun ControllerScreen(viewModel: MainViewModel) {
                 }
             }
         }
+        } else {
+            OtherModuleControllerPanel(viewModel, selectedModuleId)
+        }
+
     }
 }

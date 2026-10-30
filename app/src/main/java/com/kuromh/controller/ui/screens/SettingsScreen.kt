@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +34,7 @@ import com.kuromh.controller.ui.components.SwitchCard
 
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
+    var selectedExternalId by remember { mutableStateOf<String?>(null) }
     val otherModules by viewModel.otherModules.collectAsState()
     val otherResult by viewModel.otherModuleResult.collectAsState()
     val otherBusy by viewModel.otherModuleBusy.collectAsState()
@@ -104,6 +107,24 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 enabled = !otherBusy,
                 onCheckedChange = { viewModel.toggleOtherModule(module.id, it) }
             )
+            OutlinedButton(
+                onClick = {
+                    if (selectedExternalId == module.id) {
+                        selectedExternalId = null
+                        viewModel.closeExternalControls()
+                    } else {
+                        selectedExternalId = module.id
+                        viewModel.openExternalControls(module.id)
+                    }
+                },
+                enabled = isRootGranted && !otherBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (selectedExternalId == module.id) "Hide Mod Controls" else "Control Mod Features") }
+            if (selectedExternalId == module.id) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ExternalFeatureControls(viewModel, module.id)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             OutlinedButton(
                 onClick = { viewModel.removeOtherModule(module.id) },
                 enabled = !otherBusy,

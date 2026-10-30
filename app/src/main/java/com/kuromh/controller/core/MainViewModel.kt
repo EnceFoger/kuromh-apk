@@ -158,6 +158,81 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    private val _externalPanel = MutableStateFlow<ExternalModControls.Panel?>(null)
+    val externalPanel: StateFlow<ExternalModControls.Panel?> = _externalPanel.asStateFlow()
+
+    private val _externalMessage = MutableStateFlow("")
+    val externalMessage: StateFlow<String> = _externalMessage.asStateFlow()
+
+    private val _externalBusy = MutableStateFlow(false)
+    val externalBusy: StateFlow<Boolean> = _externalBusy.asStateFlow()
+
+    private val _selectedGame = MutableStateFlow(ModuleGames.Game())
+    val selectedGame: StateFlow<ModuleGames.Game> = _selectedGame.asStateFlow()
+
+    private val _gameLaunchMessage = MutableStateFlow("")
+    val gameLaunchMessage: StateFlow<String> = _gameLaunchMessage.asStateFlow()
+
+    private var currentGameModuleId: String? = null
+
+    fun detectGame(moduleId: String) {
+        currentGameModuleId = moduleId
+        _selectedGame.value = ModuleGames.Game()
+        _gameLaunchMessage.value = ""
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                ModuleGames.detect(getApplication<Application>(), moduleId, _isRootGranted.value)
+            }
+            if (currentGameModuleId == moduleId) _selectedGame.value = info
+        }
+    }
+
+    fun openSelectedGame() {
+        val game = _selectedGame.value
+        _gameLaunchMessage.value =
+            if (ModuleGames.launch(getApplication(), game)) ""
+            else "Could not launch the game. Verify it is installed and enabled."
+    }
+
+    private var selectedExternalModule: String? = null
+
+    fun openExternalControls(id: String) {
+        selectedExternalModule = id
+        _externalPanel.value = null
+        _externalMessage.value = "Loading mod controls..."
+        if (!_isRootGranted.value) {
+            _externalMessage.value = "Enable root first."
+            return
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { ExternalModControls.load(id) }
+            if (selectedExternalModule == id) {
+                _externalPanel.value = result.panel
+                _externalMessage.value = result.message
+            }
+        }
+    }
+
+    fun closeExternalControls() {
+        selectedExternalModule = null
+        _externalPanel.value = null
+        _externalMessage.value = ""
+    }
+
+    fun saveExternalSetting(id: String, key: String, value: String) {
+        if (!_isRootGranted.value || _externalBusy.value || selectedExternalModule != id) return
+        _externalBusy.value = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { ExternalModControls.save(id, key, value) }
+            _externalMessage.value = result.message
+            _externalBusy.value = false
+            if (result.ok && selectedExternalModule == id) {
+                _externalPanel.value = withContext(Dispatchers.IO) { ExternalModControls.load(id).panel }
+            }
+        }
+    }
+
     private var refreshJob: Job? = null
 
     init {
