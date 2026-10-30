@@ -166,10 +166,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- modul
 
-    /** Pasang modul yang dibundel di dalam APK (assets/kuro_mirror_high.zip). */
+    /**
+     * Pasang modul: coba unduh dari Supabase (hash diverifikasi), kalau gagal
+     * (offline / file belum ada / hash tidak cocok) pakai zip bawaan APK (assets/kuro_mirror_high.zip).
+     */
     fun installBundledModule() {
         runInstall { app ->
             val out = File(app.cacheDir, "module_install.zip")
+            if (RemoteModule.download(out)) return@runInstall out
             app.assets.open(ModuleManager.BUNDLED_ASSET).use { input ->
                 out.outputStream().use { output -> input.copyTo(output) }
             }
