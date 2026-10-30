@@ -37,9 +37,10 @@ import com.kuromh.controller.ui.components.StatusCard
 import com.kuromh.controller.ui.components.SwitchCard
 
 /**
- * Menu Controller (sementara): install modul yang dibundel di APK, toggle ON/OFF modul,
- * dan opsi "Upload Module" jika installer bermasalah.
- * Kontrol config lama (slider dll) ada di ConfigControls.kt -> ModuleConfigControls().
+ * Menu Controller:
+ * - modul belum terpasang -> tombol Install Module (+ Upload Module jika installer bermasalah)
+ * - modul sudah terpasang -> toggle ON/OFF lalu kontrol config (Unity Speed, Damage Rate, dll),
+ *   installer tetap ada di bagian bawah untuk Reinstall.
  */
 @Composable
 fun ControllerScreen(viewModel: MainViewModel) {
@@ -83,6 +84,46 @@ fun ControllerScreen(viewModel: MainViewModel) {
 
         StatusCard("Kuro Mirror High", statusText, active && enabled)
         Spacer(modifier = Modifier.height(12.dp))
+
+        // ---- Modul sudah terpasang: toggle + kontrol config ----
+        if (installed) {
+            SwitchCard(
+                title = "Module",
+                subtitle = when {
+                    rebootPending -> "Reboot to activate"
+                    enabled -> "On"
+                    else -> "Off - module stopped"
+                },
+                checked = enabled,
+                onCheckedChange = { viewModel.setModuleEnabled(it) },
+                enabled = isRootGranted && active && !running,
+                highlightSubtitle = enabled && active
+            )
+            if (toggleFailed) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Failed to change module state. Check root access and try again.", color = Color.Gray, fontSize = 14.sp)
+            }
+            if (active && !enabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Module is off: a running game returns to normal within a few seconds, and the game will not load the module on next launch.",
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+            }
+            if (rebootPending) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Reboot your device to activate the module, then launch the game once so it creates its config.",
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            ModuleConfigControls(viewModel)
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
         // ---- Install ----
         KuroCard {
@@ -148,34 +189,6 @@ fun ControllerScreen(viewModel: MainViewModel) {
                     }
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ---- Toggle ON/OFF ----
-        SwitchCard(
-            title = "Module",
-            subtitle = when {
-                !installed -> "Install the module first"
-                rebootPending -> "Reboot to activate"
-                enabled -> "On"
-                else -> "Off - module stopped"
-            },
-            checked = enabled,
-            onCheckedChange = { viewModel.setModuleEnabled(it) },
-            enabled = isRootGranted && active && !running,
-            highlightSubtitle = enabled && active
-        )
-        if (toggleFailed) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Failed to change module state. Check root access and try again.", color = Color.Gray, fontSize = 14.sp)
-        }
-        if (active && !enabled) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Module is off: a running game returns to normal within a few seconds, and the game will not load the module on next launch.",
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
         }
     }
 }
