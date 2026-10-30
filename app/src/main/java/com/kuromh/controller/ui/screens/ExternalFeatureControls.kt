@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kuromh.controller.core.ExternalModControls
 import com.kuromh.controller.core.MainViewModel
+import com.kuromh.controller.ui.components.InfoButton
 import com.kuromh.controller.ui.components.KuroCard
 import com.kuromh.controller.ui.components.SwitchCard
 import java.util.Locale
@@ -38,24 +39,31 @@ fun ExternalFeatureControls(viewModel: MainViewModel, moduleId: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         val current = panel?.takeIf { it.moduleId == moduleId }
         if (current == null) {
-            Text(
-                if (message.isBlank()) "Loading controls..." else message,
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(
+                    if (message.isBlank()) "Loading..." else "No editable features",
+                    modifier = Modifier.weight(1f),
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+                if (message.isNotBlank()) InfoButton("Feature controls", message)
+            }
         } else {
-            Text(current.title, color = Color.White, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Config: " + current.configFile,
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(current.title, color = Color.White, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                InfoButton(
+                    "Mod configuration",
+                    "Config: " + current.configFile +
+                        "\nOnly features exposed by the module can be controlled. The game may require a restart."
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             current.controls.forEach { control ->
                 if (control.type == "switch") {
                     SwitchCard(
                         title = control.label,
-                        subtitle = control.key,
+                        subtitle = if (busy) "Saving..." else "",
                         checked = control.value == control.on,
                         enabled = !busy,
                         onCheckedChange = { enabled ->
@@ -75,13 +83,11 @@ fun ExternalFeatureControls(viewModel: MainViewModel, moduleId: String) {
                 }
             }
             if (message.isNotBlank()) {
-                Text(message, fontSize = 12.sp, color = Color.Gray)
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Could not apply change", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    InfoButton("Save result", message)
+                }
             }
-            Text(
-                "Changes work only if this mod reads these config keys. Restart the game or reboot if needed.",
-                fontSize = 12.sp,
-                color = Color.Gray
-            )
         }
     }
 }
@@ -122,7 +128,7 @@ private fun ExternalSlider(
                 },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Apply " + control.label) }
+            ) { Text("Apply") }
         }
     }
 }
