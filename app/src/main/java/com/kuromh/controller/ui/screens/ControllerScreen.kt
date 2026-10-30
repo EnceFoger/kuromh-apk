@@ -4,6 +4,13 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Refresh
+import com.kuromh.controller.ui.components.InfoButton
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +62,8 @@ fun ControllerScreen(viewModel: MainViewModel) {
     val rebootPending by viewModel.moduleRebootPending.collectAsState()
     val install by viewModel.installState.collectAsState()
     val toggleFailed by viewModel.toggleFailed.collectAsState()
+    val moduleToggleBusy by viewModel.moduleToggleBusy.collectAsState()
+    val otherTogglePending by viewModel.otherTogglePending.collectAsState()
     val otherModules by viewModel.otherModules.collectAsState()
     val otherBusy by viewModel.otherModuleBusy.collectAsState()
     val otherResult by viewModel.otherModuleResult.collectAsState()
@@ -105,43 +114,86 @@ fun ControllerScreen(viewModel: MainViewModel) {
         }
         Spacer(modifier = Modifier.height(20.dp))
 
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Installed Modules", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Modules",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            InfoButton(
+                "Module Controls",
+                "Tap a module to open its own controls. Enable or disable takes effect after a reboot for other root modules. Only modules exposing config values can offer feature controls."
+            )
+            IconButton(
+                onClick = { viewModel.refreshOtherModules() },
+                enabled = isRootGranted && !otherBusy
+            ) { Icon(Icons.Default.Refresh, contentDescription = "Refresh modules", tint = Color.White) }
+        }
         Spacer(modifier = Modifier.height(8.dp))
         KuroCard {
-            Column(modifier = Modifier.padding(12.dp)) {
-                OutlinedButton(
-                    onClick = { selectedModuleId = ModuleManager.MODULE_ID },
-                    modifier = Modifier.fillMaxWidth()
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { selectedModuleId = ModuleManager.MODULE_ID }
                 ) {
-                    Text(if (selectedModuleId == ModuleManager.MODULE_ID) "• Kuro Mirror High" else "Kuro Mirror High")
-                }
-                otherModules.forEach { mod ->
-                    OutlinedButton(
-                        onClick = { selectedModuleId = mod.id },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (selectedModuleId == mod.id) "• " + mod.name else mod.name)
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Kuro Mirror High", color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (!installed) "Not installed" else if (enabled) "Enabled" else "Disabled",
+                                color = Color.Gray, fontSize = 12.sp
+                            )
+                        }
+                        Text(if (selectedModuleId == ModuleManager.MODULE_ID) "Selected" else "Open",
+                            color = Color.LightGray, fontSize = 12.sp)
                     }
                 }
-                if (otherModules.isEmpty()) {
-                    Text("No additional modules detected.", color = Color.Gray, fontSize = 12.sp)
+                otherModules.forEach { module ->
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { selectedModuleId = module.id }
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(module.name, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(
+                                    module.version + "  •  " + if (module.enabled) "Enabled" else "Disabled",
+                                    color = Color.Gray, fontSize = 12.sp
+                                )
+                            }
+                            Text(if (selectedModuleId == module.id) "Selected" else "Open",
+                                color = Color.LightGray, fontSize = 12.sp)
+                        }
+                    }
                 }
                 Button(
                     onClick = { extraZipPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-                    enabled = isRootGranted && !otherBusy,
+                    enabled = isRootGranted && !otherBusy && otherTogglePending.isEmpty(),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Install Other Module ZIP") }
-                if (otherResult.isNotEmpty()) Text(otherResult, color = Color.Gray, fontSize = 12.sp)
+                ) {
+                    Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Install Module ZIP")
+                }
+                if (otherResult.isNotBlank()) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Module status", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        InfoButton("Module status", otherResult)
+                    }
+                }
             }
         }
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (selectedModuleId == ModuleManager.MODULE_ID) {
-        ModuleGameSection(viewModel, selectedModuleId, installed)
-        Spacer(modifier = Modifier.height(12.dp))
         StatusCard("Kuro Mirror High", statusText, active && enabled)
         Spacer(modifier = Modifier.height(12.dp))
+        ModuleGameSection(viewModel, selectedModuleId, installed)
 
         // ---- Modul sudah terpasang: toggle + kontrol config ----
         if (installed) {
@@ -154,28 +206,12 @@ fun ControllerScreen(viewModel: MainViewModel) {
                 },
                 checked = enabled,
                 onCheckedChange = { viewModel.setModuleEnabled(it) },
-                enabled = isRootGranted && active && !running,
+                enabled = isRootGranted && active && !running && !moduleToggleBusy,
                 highlightSubtitle = enabled && active
             )
             if (toggleFailed) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Failed to change module state. Check root access and try again.", color = Color.Gray, fontSize = 14.sp)
-            }
-            if (active && !enabled) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Module is off: a running game returns to normal within a few seconds, and the game will not load the module on next launch.",
-                    color = Color.Gray,
-                    fontSize = 12.sp
-                )
-            }
-            if (rebootPending) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Reboot your device to activate the module, then launch the game once so it creates its config.",
-                    color = Color.Gray,
-                    fontSize = 12.sp
-                )
             }
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -187,11 +223,7 @@ fun ControllerScreen(viewModel: MainViewModel) {
         KuroCard {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("Module Installer", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Installs the module bundled in this app. Removing this app also removes the module.",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
+                InfoButton("Kuro Mirror High", "Installs the built-in module. Removing KUROMH also removes that module. Reboot after installation.")
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
